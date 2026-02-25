@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectRole {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum Direction {
+  FORWARD
+  BACK
+  LEFT
+  RIGHT
+}
+
+enum ActivityType {
+  NODE_CREATED
+  NODE_UPDATED
+  EDGE_CREATED
+  EDGE_DELETED
+  COMMENT_CREATED
+  SORT_COMPLETED
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String?
+  avatarUrl     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  memberships   ProjectMember[]
+  uploadedNodes PhotoNode[]
+  comments      Comment[]
+  events        ActivityEvent[]
+  invitesSent   Invite[]        @relation("InviteSender")
+}
+
+model Project {
+  id            String          @id @default(cuid())
+  name          String
+  description   String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  photoLimit    Int             @default(1500)
+  members       ProjectMember[]
+  nodes         PhotoNode[]
+  edges         Edge[]
+  comments      Comment[]
+  events        ActivityEvent[]
+  invites       Invite[]
+
+  @@index([createdAt])
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  userId    String
+  projectId String
+  role      ProjectRole
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+model PhotoNode {
+  id            String        @id @default(cuid())
+  projectId     String
+  uploaderId    String
+  imageUrl      String
+  thumbnailUrl  String
+  mediumUrl     String?
+  largeUrl      String?
+  timestamp     DateTime?
+  gpsLat        Float?
+  gpsLng        Float?
+  orientation   Int?
+  yaw           Float?
+  pitch         Float?
+  areaTag       String?
+  notes         String?
+  perceptualHash String?
+  lockByUserId  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploader      User          @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  outgoingEdges Edge[]        @relation("FromNode")
+  incomingEdges Edge[]        @relation("ToNode")
+  comments      Comment[]
+
+  @@index([projectId, timestamp])
+  @@index([projectId, createdAt])
+  @@index([projectId, areaTag])
+}
+
+model Edge {
+  id         String     @id @default(cuid())
+  projectId  String
+  fromNodeId String
+  toNodeId   String
+  direction  Direction
+  confidence Float?
+  createdById String?
+  createdAt  DateTime   @default(now())
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromNode   PhotoNode  @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode     PhotoNode  @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, direction])
+  @@index([projectId, fromNodeId])
+}
+
+model Comment {
+  id         String    @id @default(cuid())
+  projectId  String
+  nodeId     String
+  authorId   String
+  body       String
+  pinX       Float?
+  pinY       Float?
+  createdAt  DateTime  @default(now())
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  node       PhotoNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  author     User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model ActivityEvent {
+  id         String       @id @default(cuid())
+  projectId  String
+  actorId    String?
+  type       ActivityType
+  payload    Json
+  createdAt  DateTime     @default(now())
+  project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor      User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+}
+
+model Invite {
+  id          String      @id @default(cuid())
+  projectId   String
+  email       String
+  role        ProjectRole
+  token       String      @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy   User        @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([projectId, email])
+}
